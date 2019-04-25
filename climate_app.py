@@ -1,141 +1,122 @@
-from flask import Flask, jsonify
+#Importing a lof of dependencies
+
+import datetime as dt
 import numpy as np
 import pandas as pd
-import datetime as dt
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine, func
+from flask import Flask, jsonify
+
+#Setting up the DB
+#Connecting to DB
 engine = create_engine("sqlite:///Resources/hawaii.sqlite")
-# reflect an existing database into a new model
 Base = automap_base()
-# reflect the tables
 Base.prepare(engine, reflect=True)
 
 
-#################################################
-# Database Setup
-#################################################
-engine = create_engine("sqlite:///Resources/hawaii.sqlite")
-
-# reflect an existing database into a new model
-Base = automap_base()
-# reflect the tables
-Base.prepare(engine, reflect=True)
-
-# Save references to each table
-Measurement = Base.classes.measurement
+#Reference to tables in DB
 Station = Base.classes.station
+Measurement = Base.classes.measurement
 
-# Create our session (link) from Python to the DB
+#Initiate session
+
 session = Session(engine)
 
-#################################################
-# Flask Setup
-#################################################
+#Bring in Flask
 app = Flask(__name__)
 
+#Declare the route
 @app.route("/")
+
 def welcome():
+    """Welcome! Below are a list of all available API Routes."""
+    
     return (
-      "Let's plan a vacation to Hawaii <br/>"
-      "<br/>"
-      "Below are the available route on this page <br/>"
-      "<br/>"
-      "/api/precipitation <br/>"  
-      "/api/stations <br/>"
-      f"/api/start <br/>"
-      f"/api/start-end" 
+            
+            f"Welcome to the Surfs Up API.<br>"
+            f"Available routes below:<br>"
+            f"/api/precipitation<br>"
+            f"/api/stations<br>"
+            f"/api/temperature<br>"
     )
 
-@app.route("/api/v1.0/precipitation")
-def last_12_mth_prcp():
-    # Calculate the date 2 year ago from today
-    last_to_last_yr = dt.date.today() - dt.timedelta(days=2*365)
+#Declare the route
+@app.route("/api/precipitation")
 
-    # Perform a query to retrieve the data and precipitation scores
-    result = session.query(Measurement.date, func.sum(Measurement.prcp).label("prcp")).filter(Measurement.date>last_to_last_yr).\
-                group_by(Measurement.date).order_by(Measurement.date).all()
-    
-    # Create a dictionary from the row data and append to a list of all_passengers
-    all_station_prcp = []
-    
-    for row in result:
-        row_dict = {}
-        row_dict["date"] = row.date
-        row_dict["precipitation"] = row.prcp
-        all_station_prcp.append(row_dict)
+def precipitation():
+    """Function that returns data of rainfall in Hawaii for the last year."""
 
-    return jsonify(all_station_prcp)
+    #Get the latest date in DB
+    latest_date = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
+    #query date
+    query_date = dt.date(2017,8,23) - dt.timedelta(days=365)
+    #query
+    prcp_data = session.query(Measurement.date, Measurement.prcp).\
+                   filter(Measurement.date >= query_date).\
+                   order_by(Measurement.date).all()
 
 
-@app.route("/api/v1.0/stations")
+    #Create list of dictionaries; (Keys: 'date', Values: 'prcp')
+    prcp_list = []
+    #loop through the query to get data and save it in prcp_list
+    for item in precip_query:
+        prcp_dict = {}
+        prcp_dict["date"] = item[0]
+        prcp_dict["prcp"] = item[1]
+        prcp_list.append(prcp_dict)
+
+    #Return jsonified prcp_list
+    return jsonify(prcp_list)
+
+
+#Declare the route
+@app.route("/api/stations")
+
+#Function definition: 'stations'
+
 def stations():
-    """Return a list of stations"""
-    # Query all stations
-    st_results = session.query((func.distinct(Measurement.station).label("station"))).all()
+    """API Route Function that returns a list of stations from data-set."""
 
-    # Create a dictionary from the row data and append to a list of all_passengers
-    all_names = list(np.ravel(st_results))
+    #Get stations from DB
+    stations_query = session.query(Station.name, Station.station)
+    stations_pd = pd.read_sql(stations_query.statement, stations_query.session.bind)
+    #return jsonified dict of stations_pd
+    return jsonify(stations_pd.to_dict())
 
-    return jsonify(all_names)
 
-@app.route("/api/v1.0/tobs")
-def temp_obs():
-    """Return a list of temperature observation in the station with highest number of observations"""
-    # Calculate the date 2 year ago from today
-    last_to_last_yr = dt.date.today() - dt.timedelta(days=2*365)
-    # Query for USC00519281: station with highest observations
-    tobs_results = session.query(Measurement.date, Measurement.tobs).filter(Measurement.date>last_to_last_yr).\
-                filter(Measurement.station == "USC00519281").all()
-    
-    # Create a dictionary from the row data and append to a list of all_passengers
-    all_temp_obs = []
-    
-    for row in tobs_results:
-        row_dict = {}
-        row_dict["date"] = row.date
-        row_dict["temperture observation"] = row.tobs
-        all_temp_obs.append(row_dict)
+#Declare the route
+@app.route("/api/temperature")
 
-    return jsonify(all_temp_obs)
+#Function definition: 'temperature'
+def temperature():
+    """API Route Function that returns a list of Temperature observations(tobs) for the previous year."""
 
-@app.route("/api/v1.0/<start_date>")
-def temp_info(start_date):
-    """Return minimum, maximum and average temperature for all date higher than start date"""
-    temp_info = session.query(func.min(Measurement.tobs).label("TMIN"),func.max(Measurement.tobs).label("TMAX"),\
-                    func.avg(Measurement.tobs).label("TAVG")).filter(Measurement.date>=start_date).all()
-    
-    # Create a dictionary from the row data and append to a list of all_passengers
-    all_temp_info = []
-    
-    for row in temp_info:
-        row_dict = {}
-        row_dict["minimum temperature"] = row.TMIN
-        row_dict["maximum temperature"] = row.TMAX
-        row_dict["average temperature"] = row.TAVG
-        all_temp_info.append(row_dict)
+    #Get the latest date in DB
+    latest_date = session.query(Measurement.date).order_by(Measurement.date.desc()).first()
+    #query date
+    query_year = dt.date(2017,8,23) - dt.timedelta(days=365)
 
-    return jsonify(all_temp_info)
+    #build query for temperature of last year
+    temp_query = session.query(Measurement.date, Measurement.tobs).\
+                 filter(Measurement.date >= query_year).\
+                 order_by(Measurement.date).all()
 
-@app.route("/api/v1.0/<start_date>/<end_date>")
-def temp_info2(start_date,end_date):
-    """Return minimum, maximum and average temperature for all date higher than start date and lower than end date"""
-    temp_info = session.query(func.min(Measurement.tobs).label("TMIN"),func.max(Measurement.tobs).label("TMAX"),\
-                    func.avg(Measurement.tobs).label("TAVG")).filter(Measurement.date>=start_date).\
-                    filter(Measurement.date<=end_date).all()
-    
-    # Create a dictionary from the row data and append to a list of all_passengers
-    all_temp_info = []
-    
-    for row in temp_info:
-        row_dict = {}
-        row_dict["minimum temperature"] = row.TMIN
-        row_dict["maximum temperature"] = row.TMAX
-        row_dict["average temperature"] = row.TAVG
-        all_temp_info.append(row_dict)
+    #Create a list of dictionaries; (Keys: "date", Values: "temperature")
+    temperatures = []
 
-    return jsonify(all_temp_info)
+    #loop through query object: temp_query
+    for temp in temp_query:
+        temp_data = {}
+        temp_data["date"] = temp[0]
+        temp_data["tobs"] = temp[1]
+        temperatures.append(temp_data)
+
+    #Return jsonified 'temperatures' list
+    return jsonify(temperatures)
+
+
 
 if __name__ == '__main__':
     app.run(debug=True)
